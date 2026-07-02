@@ -1,66 +1,184 @@
-# India AQI API
- 
-A REST API exposing clean, structured air quality data for India — built by connecting to [OpenAQ](https://openaq.org)'s real-time global air quality monitoring network.
- 
-## Why I built this
- 
-Most beginner projects are CRUD apps or clones of existing tools. I wanted something that actually deals with real-world data from a live external API — parsing it, understanding its structure, and turning it into something clean and usable, then actually serving it as a real API rather than just printing results to a console.
- 
-## What I learned building this
- 
-- How to authenticate with a real external API using an API key
-- Why secrets should never be committed to git — I accidentally committed my `.env` file due to a `.gitignore` misconfiguration, caught it via a GitGuardian security alert, rotated the leaked key, and cleaned it from git history
-- How to parse AND generate JSON in Java without external libraries, by writing a small custom parser/serializer (`MiniJson.java`)
-- OpenAQ's data model: locations (stations) → sensors → parameters
-- The difference between a script that runs once and an actual server: how to use Java's built-in `HttpServer` to keep a program running and respond to live HTTP requests
-- Real data is messy even after "cleaning" it — for example, the `locality` field for Indian stations consistently comes back `null` from OpenAQ. Rather than hide that, I'm treating it as a known limitation to fix (likely by deriving city names from station names) in a later pass
-## Status: 🚧 In progress
- 
-- [x] Connected to OpenAQ API and authenticated with an API key
-- [x] Parsed real India monitoring station data (name, coordinates, pollutants measured)
-- [x] Built a REST API server with a live `/stations` endpoint using Java's built-in `HttpServer`
-- [ ] Add more endpoints (e.g. filter stations by city)
-- [ ] Clean up known data issues (missing `locality` values)
-- [ ] Deploy live (currently only runs on localhost)
-- [ ] Build a minimal frontend
-- [ ] Final polish + documentation
-## Tech stack
- 
-- **Java** — core language, built-in `HttpClient` and `HttpServer` (no external frameworks or libraries)
-- **OpenAQ API v3** — real-time air quality data source
-- Custom-built JSON parser/serializer (`MiniJson.java`) — since Java has no built-in JSON support
-## How to run this
- 
-1. Clone the repo and `cd` into it:
+# 🌍 India AQI API
+
+A Java REST API that fetches, cleans, and serves air quality monitoring station data from the OpenAQ API.
+
+This project focuses on backend development, REST API design, JSON processing, and data filtering without using external frameworks like Spring Boot.
+
+---
+
+## ✨ Features
+
+- 🌐 Fetches live monitoring station data from the OpenAQ API
+- 📦 Custom JSON parser and serializer (MiniJson)
+- 🚀 Lightweight Java HTTP Server using `com.sun.net.httpserver`
+- 🔍 Search monitoring stations by name
+- 🌫️ Filter stations by pollutant
+- 📊 Statistics endpoint for pollutant coverage
+- 🧹 Automatic duplicate pollutant removal
+- ⚡ In-memory caching for faster responses
+- 🔑 Secure API key management using `.env`
+
+---
+
+## 📌 Current API Endpoints
+
+### Get all stations
+
+```http
+GET /stations
+```
+
+Example:
+
+```
+http://localhost:8080/stations
+```
+
+---
+
+### Search by station name
+
+```http
+GET /stations?name=airport
+```
+
+Example:
+
+```
+http://localhost:8080/stations?name=airport
+```
+
+---
+
+### Filter by pollutant
+
+```http
+GET /stations?pollutant=pm25
+```
+
+Example:
+
+```
+http://localhost:8080/stations?pollutant=pm25
+```
+
+---
+
+### Combine filters
+
+```http
+GET /stations?name=delhi&pollutant=pm25
+```
+
+---
+
+### Statistics
+
+```http
+GET /stats
+```
+
+Returns information such as:
+
+- Total stations
+- Stations monitoring PM2.5
+- Stations monitoring CO
+- Stations monitoring NO₂
+- Total pollutant types
+
+---
+
+## 🏗️ Project Structure
+
+```
+india-aqi-api/
+│
+├── Server.java          # REST API server
+├── OpenAQClient.java    # OpenAQ API communication
+├── MiniJson.java        # Custom JSON parser & serializer
+├── Stations.java
+├── Explore.java
+├── .env
+└── README.md
+```
+
+---
+
+## 🛠️ Technologies Used
+
+- Java 24
+- Java HTTP Server
+- Java HttpClient
+- OpenAQ API
+- REST API Design
+- Git
+- GitHub
+
+---
+
+## 🚀 Getting Started
+
+### Clone the repository
+
 ```bash
-   git clone https://github.com/IRONVOID/india-aqi-api.git
-   cd india-aqi-api
+git clone https://github.com/YOUR_USERNAME/india-aqi-api.git
 ```
- 
-2. Get a free API key from [OpenAQ](https://explore.openaq.org/register)
-3. Create a `.env` file in the project root:
-```
-   OPENAQ_API_KEY=your_key_here
-```
- 
-4. Compile the server and its dependencies:
+
+### Compile
+
 ```bash
-   javac MiniJson.java OpenAQClient.java Server.java
+javac *.java
 ```
- 
-5. Run the server:
+
+### Run
+
 ```bash
-   java Server
+java Server
 ```
- 
-6. While the server is running, visit in your browser:
+
+The server starts at
+
 ```
-   http://localhost:8080/stations
+http://localhost:8080
 ```
-   This returns a live JSON list of Indian air quality monitoring stations, including their name, coordinates, and which pollutants they measure.
- 
-   Note: the server needs to keep running in its terminal for this URL to work — closing the terminal stops the server.
- 
-## Data source
- 
-This project uses the [OpenAQ API](https://docs.openaq.org/), a nonprofit, open-access platform aggregating ground-level air quality data from government and research sources worldwide, including India.
+
+---
+
+## 📈 Current Progress
+
+- ✅ OpenAQ API integration
+- ✅ REST API server
+- ✅ Custom JSON parser
+- ✅ Station search
+- ✅ Pollutant filtering
+- ✅ Statistics endpoint
+- ✅ Duplicate pollutant cleanup
+- 🚧 Locality search
+- 🚧 Pagination
+- 🚧 Sorting
+- 🚧 Live AQI measurements
+- 🚧 AQI health analysis
+- 🚧 Frontend dashboard
+
+---
+
+## 🎯 Future Improvements
+
+- Search by locality
+- Pagination support
+- Sorting support
+- Live pollutant measurements
+- AQI calculation
+- Health recommendations
+- Interactive frontend dashboard
+- Deployment to the cloud
+
+---
+
+## 👨‍💻 Author
+
+**Akshit Tanwar**
+
+B.Tech Computer Science & Engineering
+
+Building backend projects to strengthen Java and REST API development skills.
