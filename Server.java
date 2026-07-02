@@ -39,7 +39,11 @@ public class Server {
         System.out.println("http://localhost:8080/stations");
         System.out.println("http://localhost:8080/stations?pollutant=pm25");
         System.out.println("http://localhost:8080/stations?name=airport");
+        System.out.println("http://localhost:8080/stations?locality=Delhi");
         System.out.println("http://localhost:8080/stations?name=delhi&pollutant=pm25");
+        System.out.println("http://localhost:8080/stations?locality=Delhi&pollutant=pm25");
+        System.out.println("http://localhost:8080/stations?page=1&limit=10");
+        System.out.println("http://localhost:8080/stations?locality=Delhi&page=2&limit=5");
         System.out.println("http://localhost:8080/stats");
     }
 
@@ -110,10 +114,143 @@ public class Server {
 
                             result = filtered;
                         }
+
+                        // NEW: Filter stations by locality (e.g. ?locality=Delhi)
+                        // Uses the same "contains, case-insensitive" matching style
+                        // as the name filter above, so partial/loose matches work
+                        // (e.g. "delhi" matches "New Delhi").
+                        //
+                        // IMPORTANT: OpenAQ does not reliably fill in "locality"
+                        // for Indian stations — it's often null. Instead of
+                        // silently returning zero results in that case, we fall
+                        // back to matching against the station's "name" field,
+                        // since names usually contain the city anyway
+                        // (e.g. "Delhi Technological University, Delhi - CPCB").
+                        else if (param.startsWith("locality=")) {
+
+                            String keyword =
+                                    param.substring("locality=".length()).toLowerCase();
+
+                            List<Object> filtered = new ArrayList<>();
+
+                            for (Object obj : result) {
+
+                                Map<String, Object> station =
+                                        OpenAQClient.asMap(obj);
+
+                                Object localityValue = station.get("locality");
+
+                                boolean matches = false;
+
+                                if (localityValue != null) {
+
+                                    String locality =
+                                            localityValue.toString().toLowerCase();
+
+                                    if (locality.contains(keyword)) {
+                                        matches = true;
+                                    }
+                                } else {
+
+                                    // Fallback: locality missing, try the name instead.
+                                    String name =
+                                            String.valueOf(station.get("name")).toLowerCase();
+
+                                    if (name.contains(keyword)) {
+                                        matches = true;
+                                    }
+                                }
+
+                                if (matches) {
+                                    filtered.add(station);
+                                }
+                            }
+
+                            result = filtered;
+                        }
                     }
                 }
 
-                String responseJson = MiniJson.toJson(result);
+                // ===== PAGINATION =====
+                // Applied AFTER all filters above, so page/limit always
+                // operate on the already-filtered result set, not the
+                // full station list. This keeps filtering + pagination
+                // composable, e.g. ?locality=Delhi&pollutant=pm25&page=1&limit=10
+
+                int totalResults = result.size();
+
+                // Defaults: page 1, 10 stations per page.
+                int page = 1;
+                int limit = 10;
+
+                if (query != null) {
+
+                    String[] params = query.split("&");
+
+                    for (String param : params) {
+
+                        if (param.startsWith("page=")) {
+
+                            try {
+                                page = Integer.parseInt(
+                                        param.substring("page=".length()));
+                            } catch (NumberFormatException e) {
+                                // Ignore invalid values, keep default.
+                            }
+                        }
+
+                        else if (param.startsWith("limit=")) {
+
+                            try {
+                                limit = Integer.parseInt(
+                                        param.substring("limit=".length()));
+                            } catch (NumberFormatException e) {
+                                // Ignore invalid values, keep default.
+                            }
+                        }
+                    }
+                }
+
+                // Guard against nonsense input (page=0, limit=-5, limit=99999...)
+                // rather than letting it throw or return everything.
+                if (page < 1) {
+                    page = 1;
+                }
+                if (limit < 1) {
+                    limit = 10;
+                }
+                if (limit > 100) {
+                    limit = 100; // sane upper bound so no one can request the whole dataset in one page
+                }
+
+                int totalPages = (int) Math.ceil((double) totalResults / limit);
+                if (totalPages < 1) {
+                    totalPages = 1;
+                }
+
+                int fromIndex = (page - 1) * limit;
+                int toIndex = Math.min(fromIndex + limit, totalResults);
+
+                List<Object> pagedResult;
+
+                if (fromIndex >= totalResults || fromIndex < 0) {
+                    // Requested page is past the last page of results.
+                    pagedResult = new ArrayList<>();
+                } else {
+                    pagedResult = new ArrayList<>(result.subList(fromIndex, toIndex));
+                }
+
+                Map<String, Object> pagination = new LinkedHashMap<>();
+                pagination.put("page", page);
+                pagination.put("limit", limit);
+                pagination.put("totalResults", totalResults);
+                pagination.put("totalPages", totalPages);
+
+                Map<String, Object> responseBody = new LinkedHashMap<>();
+                responseBody.put("data", pagedResult);
+                responseBody.put("pagination", pagination);
+
+                String responseJson = MiniJson.toJson(responseBody);
 
                 byte[] bytes =
                         responseJson.getBytes(StandardCharsets.UTF_8);
