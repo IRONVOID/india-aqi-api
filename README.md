@@ -8,15 +8,15 @@ This project focuses on backend development, REST API design, JSON processing, a
 
 ## ✨ Features
 
-- 🌐 Fetches live monitoring station data from the OpenAQ API
-- 📦 Custom JSON parser and serializer (MiniJson)
-- 🚀 Lightweight Java HTTP Server using `com.sun.net.httpserver`
-- 🔍 Search monitoring stations by name
-- 🌫️ Filter stations by pollutant
-- 📊 Statistics endpoint for pollutant coverage
-- 🧹 Automatic duplicate pollutant removal
-- ⚡ In-memory caching for faster responses
-- 🔑 Secure API key management using `.env`
+-  Fetches live monitoring station data from the OpenAQ API
+-  Custom JSON parser and serializer (MiniJson)
+-  Lightweight Java HTTP Server using `com.sun.net.httpserver`
+-  Search monitoring stations by name
+-  Filter stations by pollutant
+-  Statistics endpoint for pollutant coverage
+-  Automatic duplicate pollutant removal
+-  In-memory caching for faster responses
+-  Secure API key management using `.env`
 
 ---
 
@@ -162,7 +162,7 @@ http://localhost:8080
 
 ---
 
-## 🎯 Future Improvements
+## Future Improvements
 
 - Search by locality
 - Pagination support
@@ -181,4 +181,4 @@ http://localhost:8080
 
 B.Tech Computer Science & Engineering
 
-Building backend projects to strengthen Java and REST API development skills.
+Building backend projects to strengthen Java and REST API development skills
