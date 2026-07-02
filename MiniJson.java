@@ -1,25 +1,21 @@
 import java.util.*;
 
 /*
- * MiniJson — a small, dependency-free JSON parser.
+ * MiniJson — a small, dependency-free JSON parser AND serializer.
  *
- * Why we're writing our own instead of using a library:
- * Java has no JSON support built in (unlike Python), and pulling in a
- * real library (like org.json or Gson) means dealing with build tools
- * (Maven/Gradle) or manually downloading .jar files. To keep things
- * simple while we're still learning the basics, this file converts
- * JSON text into plain Java objects:
+ * Day 2 added: parse(jsonText) -> Java objects
+ * Day 3 adds:  toJson(javaObject) -> JSON text
  *
- *   JSON object  -> Map<String, Object>
- *   JSON array   -> List<Object>
- *   JSON string  -> String
- *   JSON number  -> Double
- *   JSON true/false -> Boolean
- *   JSON null    -> null
+ * This is needed because our API server needs to send JSON *back* to
+ * whoever calls it, not just read JSON from OpenAQ.
  *
- * Usage:
- *   Object data = MiniJson.parse(jsonText);
- *   Map<String, Object> obj = (Map<String, Object>) data;
+ * Supported Java -> JSON conversions:
+ *   Map<String, Object>  -> JSON object
+ *   List<Object>         -> JSON array
+ *   String                -> JSON string (properly escaped)
+ *   Number                -> JSON number
+ *   Boolean                -> true/false
+ *   null                   -> null
  */
 public class MiniJson {
 
@@ -33,9 +29,82 @@ public class MiniJson {
     public static Object parse(String text) {
         MiniJson parser = new MiniJson(text);
         parser.skipWhitespace();
-        Object result = parser.parseValue();
-        return result;
+        return parser.parseValue();
     }
+
+    // ---------- SERIALIZATION (Java objects -> JSON text) ----------
+
+    public static String toJson(Object obj) {
+        StringBuilder sb = new StringBuilder();
+        writeValue(obj, sb);
+        return sb.toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void writeValue(Object obj, StringBuilder sb) {
+        if (obj == null) {
+            sb.append("null");
+        } else if (obj instanceof String) {
+            writeString((String) obj, sb);
+        } else if (obj instanceof Map) {
+            writeObject((Map<String, Object>) obj, sb);
+        } else if (obj instanceof List) {
+            writeArray((List<Object>) obj, sb);
+        } else if (obj instanceof Boolean) {
+            sb.append(obj.toString());
+        } else if (obj instanceof Number) {
+            sb.append(obj.toString());
+        } else {
+            writeString(obj.toString(), sb);
+        }
+    }
+
+    private static void writeObject(Map<String, Object> map, StringBuilder sb) {
+        sb.append('{');
+        boolean first = true;
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+            if (!first) sb.append(',');
+            first = false;
+            writeString(entry.getKey(), sb);
+            sb.append(':');
+            writeValue(entry.getValue(), sb);
+        }
+        sb.append('}');
+    }
+
+    private static void writeArray(List<Object> list, StringBuilder sb) {
+        sb.append('[');
+        boolean first = true;
+        for (Object item : list) {
+            if (!first) sb.append(',');
+            first = false;
+            writeValue(item, sb);
+        }
+        sb.append(']');
+    }
+
+    private static void writeString(String s, StringBuilder sb) {
+        sb.append('"');
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"': sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                default:
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+            }
+        }
+        sb.append('"');
+    }
+
+    // ---------- PARSING (JSON text -> Java objects) ----------
 
     private Object parseValue() {
         skipWhitespace();
@@ -44,13 +113,13 @@ public class MiniJson {
         if (c == '[') return parseArray();
         if (c == '"') return parseString();
         if (c == 't' || c == 'f') return parseBoolean();
-        if (c == 'n') { pos += 4; return null; } // "null"
+        if (c == 'n') { pos += 4; return null; }
         return parseNumber();
     }
 
     private Map<String, Object> parseObject() {
         Map<String, Object> map = new LinkedHashMap<>();
-        pos++; // skip '{'
+        pos++;
         skipWhitespace();
         if (text.charAt(pos) == '}') { pos++; return map; }
 
@@ -58,7 +127,7 @@ public class MiniJson {
             skipWhitespace();
             String key = parseString();
             skipWhitespace();
-            pos++; // skip ':'
+            pos++;
             Object value = parseValue();
             map.put(key, value);
             skipWhitespace();
@@ -70,7 +139,7 @@ public class MiniJson {
 
     private List<Object> parseArray() {
         List<Object> list = new ArrayList<>();
-        pos++; // skip '['
+        pos++;
         skipWhitespace();
         if (text.charAt(pos) == ']') { pos++; return list; }
 
@@ -85,7 +154,7 @@ public class MiniJson {
     }
 
     private String parseString() {
-        pos++; // skip opening quote
+        pos++;
         StringBuilder sb = new StringBuilder();
         while (text.charAt(pos) != '"') {
             char c = text.charAt(pos);
@@ -111,7 +180,7 @@ public class MiniJson {
             }
             pos++;
         }
-        pos++; // skip closing quote
+        pos++;
         return sb.toString();
     }
 
@@ -124,8 +193,8 @@ public class MiniJson {
     }
 
     private Boolean parseBoolean() {
-        if (text.charAt(pos) == 't') { pos += 4; return true; }  // "true"
-        pos += 5; return false; // "false"
+        if (text.charAt(pos) == 't') { pos += 4; return true; }
+        pos += 5; return false;
     }
 
     private void skipWhitespace() {
