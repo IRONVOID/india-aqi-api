@@ -6,8 +6,8 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +44,10 @@ public class Server {
         System.out.println("http://localhost:8080/stations?locality=Delhi&pollutant=pm25");
         System.out.println("http://localhost:8080/stations?page=1&limit=10");
         System.out.println("http://localhost:8080/stations?locality=Delhi&page=2&limit=5");
+        System.out.println("http://localhost:8080/stations?sort=name");
+        System.out.println("http://localhost:8080/stations?sort=locality");
+        System.out.println("http://localhost:8080/stations?sort=pollutantCount");
+        System.out.println("http://localhost:8080/stations?locality=Delhi&sort=pollutantCount&limit=5");
         System.out.println("http://localhost:8080/stats");
     }
 
@@ -167,6 +171,73 @@ public class Server {
                             }
 
                             result = filtered;
+                        }
+                    }
+                }
+
+                // ===== SORTING =====
+                // Applied AFTER filtering (we only sort what actually matched)
+                // and BEFORE pagination (so "page 2" is the next slice of the
+                // sorted list, not a page-then-sort mismatch).
+                //
+                // Supported values:
+                //   sort=name            -> alphabetical by station name
+                //   sort=locality        -> alphabetical by locality
+                //                           (falls back to name when locality
+                //                            is null, same as the locality filter)
+                //   sort=pollutantCount  -> most pollutants monitored first
+                if (query != null) {
+
+                    String[] params = query.split("&");
+
+                    for (String param : params) {
+
+                        if (param.startsWith("sort=")) {
+
+                            String sortBy =
+                                    param.substring("sort=".length());
+
+                            if (sortBy.equalsIgnoreCase("name")) {
+
+                                result.sort(Comparator.comparing(obj ->
+                                        String.valueOf(
+                                                OpenAQClient.asMap(obj).get("name")
+                                        ).toLowerCase()
+                                ));
+                            }
+
+                            else if (sortBy.equalsIgnoreCase("locality")) {
+
+                                result.sort(Comparator.comparing(obj -> {
+
+                                    Map<String, Object> station =
+                                            OpenAQClient.asMap(obj);
+
+                                    Object localityValue = station.get("locality");
+
+                                    // Same fallback as the locality filter:
+                                    // if locality is missing, sort by name instead
+                                    // so null-locality stations don't all clump
+                                    // together at one end of the list.
+                                    String sortKey = (localityValue != null)
+                                            ? localityValue.toString()
+                                            : String.valueOf(station.get("name"));
+
+                                    return sortKey.toLowerCase();
+                                }));
+                            }
+
+                            else if (sortBy.equalsIgnoreCase("pollutantCount")) {
+
+                                // Descending: stations monitoring more
+                                // pollutants are generally more useful/complete,
+                                // so surface them first.
+                                result.sort(Comparator.comparingInt((Object obj) ->
+                                        OpenAQClient.asList(
+                                                OpenAQClient.asMap(obj).get("pollutants")
+                                        ).size()
+                                ).reversed());
+                            }
                         }
                     }
                 }
