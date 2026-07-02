@@ -5,14 +5,19 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
+/*
+ * Server — responsible ONLY for HTTP concerns:
+ *   - starting the server and loading the initial station cache
+ *   - routing requests to the right handler
+ *   - reading the request (query string) and writing the response (JSON)
+ *
+ * All business logic (filtering, sorting, pagination, stats calculation)
+ * now lives in StationService and StatsService. This handler code should
+ * never need to change just because a filter or sort option changes.
+ */
 public class Server {
 
     static List<Object> stationsCache;
@@ -29,6 +34,7 @@ public class Server {
 
         server.createContext("/stations", new StationsHandler());
         server.createContext("/stats", new StatsHandler());
+        server.createContext("/live", new LiveHandler());
 
         server.setExecutor(null);
         server.start();
@@ -48,6 +54,7 @@ public class Server {
         System.out.println("http://localhost:8080/stations?sort=locality");
         System.out.println("http://localhost:8080/stations?sort=pollutantCount");
         System.out.println("http://localhost:8080/stations?locality=Delhi&sort=pollutantCount&limit=5");
+        System.out.println("http://localhost:8080/live?id=236");
         System.out.println("http://localhost:8080/stats");
     }
 
@@ -58,303 +65,20 @@ public class Server {
 
             try {
 
-                List<Object> result = new ArrayList<>(stationsCache);
-
                 String query = exchange.getRequestURI().getQuery();
 
-                if (query != null) {
+                Map<String, Object> responseBody =
+                        StationService.getStations(stationsCache, query);
 
-                    String[] params = query.split("&");
-
-                    for (String param : params) {
-
-                        if (param.startsWith("pollutant=")) {
-
-                            String pollutant =
-                                    param.substring("pollutant=".length()).toLowerCase();
-
-                            List<Object> filtered = new ArrayList<>();
-
-                            for (Object obj : result) {
-
-                                Map<String, Object> station =
-                                        OpenAQClient.asMap(obj);
-
-                                List<Object> pollutants =
-                                        OpenAQClient.asList(station.get("pollutants"));
-
-                                for (Object p : pollutants) {
-
-                                    if (p.toString().equalsIgnoreCase(pollutant)) {
-
-                                        filtered.add(station);
-                                        break;
-                                    }
-                                }
-                            }
-
-                            result = filtered;
-                        }
-
-                        else if (param.startsWith("name=")) {
-
-                            String keyword =
-                                    param.substring("name=".length()).toLowerCase();
-
-                            List<Object> filtered = new ArrayList<>();
-
-                            for (Object obj : result) {
-
-                                Map<String, Object> station =
-                                        OpenAQClient.asMap(obj);
-
-                                String name =
-                                        String.valueOf(station.get("name")).toLowerCase();
-
-                                if (name.contains(keyword)) {
-                                    filtered.add(station);
-                                }
-                            }
-
-                            result = filtered;
-                        }
-
-                        // NEW: Filter stations by locality (e.g. ?locality=Delhi)
-                        // Uses the same "contains, case-insensitive" matching style
-                        // as the name filter above, so partial/loose matches work
-                        // (e.g. "delhi" matches "New Delhi").
-                        //
-                        // IMPORTANT: OpenAQ does not reliably fill in "locality"
-                        // for Indian stations — it's often null. Instead of
-                        // silently returning zero results in that case, we fall
-                        // back to matching against the station's "name" field,
-                        // since names usually contain the city anyway
-                        // (e.g. "Delhi Technological University, Delhi - CPCB").
-                        else if (param.startsWith("locality=")) {
-
-                            String keyword =
-                                    param.substring("locality=".length()).toLowerCase();
-
-                            List<Object> filtered = new ArrayList<>();
-
-                            for (Object obj : result) {
-
-                                Map<String, Object> station =
-                                        OpenAQClient.asMap(obj);
-
-                                Object localityValue = station.get("locality");
-
-                                boolean matches = false;
-
-                                if (localityValue != null) {
-
-                                    String locality =
-                                            localityValue.toString().toLowerCase();
-
-                                    if (locality.contains(keyword)) {
-                                        matches = true;
-                                    }
-                                } else {
-
-                                    // Fallback: locality missing, try the name instead.
-                                    String name =
-                                            String.valueOf(station.get("name")).toLowerCase();
-
-                                    if (name.contains(keyword)) {
-                                        matches = true;
-                                    }
-                                }
-
-                                if (matches) {
-                                    filtered.add(station);
-                                }
-                            }
-
-                            result = filtered;
-                        }
-                    }
-                }
-
-                // ===== SORTING =====
-                // Applied AFTER filtering (we only sort what actually matched)
-                // and BEFORE pagination (so "page 2" is the next slice of the
-                // sorted list, not a page-then-sort mismatch).
-                //
-                // Supported values:
-                //   sort=name            -> alphabetical by station name
-                //   sort=locality        -> alphabetical by locality
-                //                           (falls back to name when locality
-                //                            is null, same as the locality filter)
-                //   sort=pollutantCount  -> most pollutants monitored first
-                if (query != null) {
-
-                    String[] params = query.split("&");
-
-                    for (String param : params) {
-
-                        if (param.startsWith("sort=")) {
-
-                            String sortBy =
-                                    param.substring("sort=".length());
-
-                            if (sortBy.equalsIgnoreCase("name")) {
-
-                                result.sort(Comparator.comparing(obj ->
-                                        String.valueOf(
-                                                OpenAQClient.asMap(obj).get("name")
-                                        ).toLowerCase()
-                                ));
-                            }
-
-                            else if (sortBy.equalsIgnoreCase("locality")) {
-
-                                result.sort(Comparator.comparing(obj -> {
-
-                                    Map<String, Object> station =
-                                            OpenAQClient.asMap(obj);
-
-                                    Object localityValue = station.get("locality");
-
-                                    // Same fallback as the locality filter:
-                                    // if locality is missing, sort by name instead
-                                    // so null-locality stations don't all clump
-                                    // together at one end of the list.
-                                    String sortKey = (localityValue != null)
-                                            ? localityValue.toString()
-                                            : String.valueOf(station.get("name"));
-
-                                    return sortKey.toLowerCase();
-                                }));
-                            }
-
-                            else if (sortBy.equalsIgnoreCase("pollutantCount")) {
-
-                                // Descending: stations monitoring more
-                                // pollutants are generally more useful/complete,
-                                // so surface them first.
-                                result.sort(Comparator.comparingInt((Object obj) ->
-                                        OpenAQClient.asList(
-                                                OpenAQClient.asMap(obj).get("pollutants")
-                                        ).size()
-                                ).reversed());
-                            }
-                        }
-                    }
-                }
-
-                // ===== PAGINATION =====
-                // Applied AFTER all filters above, so page/limit always
-                // operate on the already-filtered result set, not the
-                // full station list. This keeps filtering + pagination
-                // composable, e.g. ?locality=Delhi&pollutant=pm25&page=1&limit=10
-
-                int totalResults = result.size();
-
-                // Defaults: page 1, 10 stations per page.
-                int page = 1;
-                int limit = 10;
-
-                if (query != null) {
-
-                    String[] params = query.split("&");
-
-                    for (String param : params) {
-
-                        if (param.startsWith("page=")) {
-
-                            try {
-                                page = Integer.parseInt(
-                                        param.substring("page=".length()));
-                            } catch (NumberFormatException e) {
-                                // Ignore invalid values, keep default.
-                            }
-                        }
-
-                        else if (param.startsWith("limit=")) {
-
-                            try {
-                                limit = Integer.parseInt(
-                                        param.substring("limit=".length()));
-                            } catch (NumberFormatException e) {
-                                // Ignore invalid values, keep default.
-                            }
-                        }
-                    }
-                }
-
-                // Guard against nonsense input (page=0, limit=-5, limit=99999...)
-                // rather than letting it throw or return everything.
-                if (page < 1) {
-                    page = 1;
-                }
-                if (limit < 1) {
-                    limit = 10;
-                }
-                if (limit > 100) {
-                    limit = 100; // sane upper bound so no one can request the whole dataset in one page
-                }
-
-                int totalPages = (int) Math.ceil((double) totalResults / limit);
-                if (totalPages < 1) {
-                    totalPages = 1;
-                }
-
-                int fromIndex = (page - 1) * limit;
-                int toIndex = Math.min(fromIndex + limit, totalResults);
-
-                List<Object> pagedResult;
-
-                if (fromIndex >= totalResults || fromIndex < 0) {
-                    // Requested page is past the last page of results.
-                    pagedResult = new ArrayList<>();
-                } else {
-                    pagedResult = new ArrayList<>(result.subList(fromIndex, toIndex));
-                }
-
-                Map<String, Object> pagination = new LinkedHashMap<>();
-                pagination.put("page", page);
-                pagination.put("limit", limit);
-                pagination.put("totalResults", totalResults);
-                pagination.put("totalPages", totalPages);
-
-                Map<String, Object> responseBody = new LinkedHashMap<>();
-                responseBody.put("data", pagedResult);
-                responseBody.put("pagination", pagination);
-
-                String responseJson = MiniJson.toJson(responseBody);
-
-                byte[] bytes =
-                        responseJson.getBytes(StandardCharsets.UTF_8);
-
-                exchange.getResponseHeaders().set(
-                        "Content-Type",
-                        "application/json"
-                );
-
-                exchange.sendResponseHeaders(200, bytes.length);
-
-                OutputStream os = exchange.getResponseBody();
-
-                os.write(bytes);
-
-                os.close();
+                sendJson(exchange, 200, MiniJson.toJson(responseBody));
 
             } catch (Exception e) {
 
-                String error =
-                        "{\"error\":\"" + e.getMessage() + "\"}";
-
-                byte[] bytes =
-                        error.getBytes(StandardCharsets.UTF_8);
-
-                exchange.sendResponseHeaders(500, bytes.length);
-
-                exchange.getResponseBody().write(bytes);
-
-                exchange.close();
+                sendJson(exchange, 500, "{\"error\":\"" + e.getMessage() + "\"}");
             }
         }
     }
+
     static class StatsHandler implements HttpHandler {
 
         @Override
@@ -362,86 +86,98 @@ public class Server {
 
             try {
 
-                Map<String, Object> stats = new LinkedHashMap<>();
+                Map<String, Object> stats = StatsService.getStats(stationsCache);
 
-                stats.put("totalStations", stationsCache.size());
-
-                Map<String, Integer> pollutantCounts = new LinkedHashMap<>();
-
-                for (Object obj : stationsCache) {
-
-                    Map<String, Object> station =
-                            OpenAQClient.asMap(obj);
-
-                    List<Object> pollutants =
-                            OpenAQClient.asList(station.get("pollutants"));
-
-                    // FIX: Count each pollutant only once per station
-                    Set<String> uniquePollutants = new HashSet<>();
-
-                    for (Object pollutant : pollutants) {
-
-                        if (pollutant != null) {
-                            uniquePollutants.add(
-                                    pollutant.toString().toLowerCase()
-                            );
-                        }
-                    }
-
-                    for (String pollutant : uniquePollutants) {
-
-                        pollutantCounts.put(
-                                pollutant,
-                                pollutantCounts.getOrDefault(pollutant, 0) + 1
-                        );
-                    }
-                }
-
-                for (Map.Entry<String, Integer> entry : pollutantCounts.entrySet()) {
-
-                    stats.put(
-                            entry.getKey() + "Stations",
-                            entry.getValue()
-                    );
-                }
-
-                stats.put(
-                        "totalPollutantTypes",
-                        pollutantCounts.size()
-                );
-
-                String responseJson = MiniJson.toJson(stats);
-
-                byte[] bytes =
-                        responseJson.getBytes(StandardCharsets.UTF_8);
-
-                exchange.getResponseHeaders().set(
-                        "Content-Type",
-                        "application/json"
-                );
-
-                exchange.sendResponseHeaders(200, bytes.length);
-
-                OutputStream os = exchange.getResponseBody();
-
-                os.write(bytes);
-
-                os.close();
+                sendJson(exchange, 200, MiniJson.toJson(stats));
 
             } catch (Exception e) {
 
-                String error =
-                        "{\"error\":\"" + e.getMessage() + "\"}";
-
-                byte[] bytes =
-                        error.getBytes(StandardCharsets.UTF_8);
-
-                exchange.sendResponseHeaders(500, bytes.length);
-
-                exchange.getResponseBody().write(bytes);
-
-                exchange.close();
+                sendJson(exchange, 500, "{\"error\":\"" + e.getMessage() + "\"}");
             }
         }
+    }
+
+    static class LiveHandler implements HttpHandler {
+
+        @Override
+        public void handle(HttpExchange exchange) throws java.io.IOException {
+
+            try {
+
+                String query = exchange.getRequestURI().getQuery();
+
+                Integer stationId = extractId(query);
+
+                if (stationId == null) {
+                    sendJson(exchange, 400,
+                            "{\"error\":\"Missing or invalid required parameter: id. Example: /live?id=236\"}");
+                    return;
+                }
+
+                Map<String, Object> result =
+                        LiveMeasurementService.getLiveMeasurements(stationsCache, stationId);
+
+                if (result == null) {
+                    sendJson(exchange, 404,
+                            "{\"error\":\"No station found with id " + stationId + "\"}");
+                    return;
+                }
+
+                sendJson(exchange, 200, MiniJson.toJson(result));
+
+            } catch (Exception e) {
+
+                sendJson(exchange, 500, "{\"error\":\"" + e.getMessage() + "\"}");
+            }
+        }
+
+        /**
+         * Pulls "id" out of the query string and parses it as an int.
+         * Returns null if it's missing or not a valid number, so the
+         * handler can respond with a clear 400 error instead of crashing.
+         */
+        private Integer extractId(String query) {
+
+            if (query == null) {
+                return null;
+            }
+
+            String[] params = query.split("&");
+
+            for (String param : params) {
+
+                if (param.startsWith("id=")) {
+
+                    try {
+                        return Integer.parseInt(param.substring("id=".length()));
+                    } catch (NumberFormatException e) {
+                        return null;
+                    }
+                }
+            }
+
+            return null;
+        }
+    }
+
+    /**
+     * Shared helper for writing a JSON response with the correct headers.
+     * Both handlers were duplicating this exact block before, so pulling
+     * it out here removes that duplication too.
+     */
+    private static void sendJson(HttpExchange exchange, int statusCode, String json)
+            throws java.io.IOException {
+
+        byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+
+        exchange.sendResponseHeaders(statusCode, bytes.length);
+
+        OutputStream os = exchange.getResponseBody();
+
+        os.write(bytes);
+
+        os.close();
     }
 }

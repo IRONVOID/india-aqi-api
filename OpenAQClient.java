@@ -13,6 +13,21 @@ public class OpenAQClient {
 
     static final String INDIA_COUNTRY_ID = "9";
 
+    /**
+     * Lookup table built while fetching stations: for each station ID,
+     * maps sensorId -> pollutant name.
+     *
+     * Why this exists: OpenAQ's "/latest" endpoint (used for live
+     * measurements) only returns a raw sensorsId with each reading —
+     * it does NOT tell you which pollutant that sensor measures. The
+     * only place that mapping is available is the sensor list returned
+     * by "/locations", which we already read once in fetchIndiaStations()
+     * to build the "pollutants" list. Instead of throwing that mapping
+     * away, we cache it here so live measurements can be labeled correctly
+     * later without a second API call.
+     */
+    static Map<Integer, Map<Integer, String>> sensorLookup = new LinkedHashMap<>();
+
     static String getEnvValue(String key) throws IOException {
         List<String> lines = Files.readAllLines(Paths.get(".env"));
 
@@ -67,6 +82,37 @@ public class OpenAQClient {
     }
 
     /**
+     * Converts a JSON-parsed number (often a Double, e.g. 236.0) into a
+     * plain int. Centralized here so every place that needs a station ID
+     * or sensor ID as an int handles it the same way.
+     */
+    static int toInt(Object obj) {
+
+        if (obj instanceof Number) {
+            return ((Number) obj).intValue();
+        }
+
+        return Integer.parseInt(String.valueOf(obj));
+    }
+
+    /**
+     * Looks up the pollutant name for a given station + sensor combination,
+     * using the lookup table built during fetchIndiaStations().
+     * Returns "unknown" if we don't have a mapping (e.g. cache not yet
+     * loaded, or a sensor that wasn't part of the original station data).
+     */
+    static String lookupPollutantName(int stationId, int sensorId) {
+
+        Map<Integer, String> stationSensors = sensorLookup.get(stationId);
+
+        if (stationSensors == null) {
+            return "unknown";
+        }
+
+        return stationSensors.getOrDefault(sensorId, "unknown");
+    }
+
+    /**
      * Fetches India monitoring stations.
      */
     static List<Object> fetchIndiaStations() throws Exception {
@@ -101,6 +147,11 @@ public class OpenAQClient {
             // FIX: Remove duplicate pollutants
             Set<String> uniquePollutants = new LinkedHashSet<>();
 
+            // NEW: sensorId -> pollutant name, for this station.
+            // Filled in alongside uniquePollutants below, using the same
+            // sensor loop, so there's no extra API calls needed.
+            Map<Integer, String> sensorIdToPollutant = new LinkedHashMap<>();
+
             for (Object sensorObj : sensors) {
 
                 Map<String, Object> sensor =
@@ -111,9 +162,19 @@ public class OpenAQClient {
 
                 if (parameter != null && parameter.get("name") != null) {
 
-                    uniquePollutants.add(
-                            parameter.get("name").toString().toLowerCase()
-                    );
+                    String pollutantName =
+                            parameter.get("name").toString().toLowerCase();
+
+                    uniquePollutants.add(pollutantName);
+
+                    Object sensorIdValue = sensor.get("id");
+
+                    if (sensorIdValue != null) {
+                        sensorIdToPollutant.put(
+                                toInt(sensorIdValue),
+                                pollutantName
+                        );
+                    }
                 }
             }
 
@@ -130,6 +191,12 @@ public class OpenAQClient {
             cleanStation.put("pollutants", pollutants);
 
             cleaned.add(cleanStation);
+
+            // Cache the sensor lookup table for this station so
+            // lookupPollutantName() can use it later.
+            if (station.get("id") != null) {
+                sensorLookup.put(toInt(station.get("id")), sensorIdToPollutant);
+            }
         }
 
         return cleaned;
