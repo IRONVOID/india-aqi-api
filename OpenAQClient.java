@@ -15,6 +15,7 @@ public class OpenAQClient {
 
     static String getEnvValue(String key) throws IOException {
         List<String> lines = Files.readAllLines(Paths.get(".env"));
+
         for (String line : lines) {
             line = line.trim();
 
@@ -97,7 +98,8 @@ public class OpenAQClient {
             List<Object> sensors =
                     asList(station.get("sensors"));
 
-            List<Object> pollutants = new ArrayList<>();
+            // FIX: Remove duplicate pollutants
+            Set<String> uniquePollutants = new LinkedHashSet<>();
 
             for (Object sensorObj : sensors) {
 
@@ -107,17 +109,20 @@ public class OpenAQClient {
                 Map<String, Object> parameter =
                         asMap(sensor.get("parameter"));
 
-                if (parameter != null) {
-                    pollutants.add(parameter.get("name"));
+                if (parameter != null && parameter.get("name") != null) {
+
+                    uniquePollutants.add(
+                            parameter.get("name").toString().toLowerCase()
+                    );
                 }
             }
+
+            List<Object> pollutants = new ArrayList<>(uniquePollutants);
 
             Map<String, Object> cleanStation =
                     new LinkedHashMap<>();
 
-            // NEW
             cleanStation.put("id", station.get("id"));
-
             cleanStation.put("name", station.get("name"));
             cleanStation.put("locality", station.get("locality"));
             cleanStation.put("latitude", lat);
@@ -135,12 +140,12 @@ public class OpenAQClient {
      */
     static List<Object> fetchLatestMeasurements(int locationId) throws Exception {
 
-        String apiKey = getEnvValue("OPENAQ_API_KEY");
+    String apiKey = getEnvValue("OPENAQ_API_KEY");
 
-        String json = fetch("/locations/" + locationId + "/latest", apiKey);
+    String json = fetch("/locations/" + locationId + "/latest", apiKey);
 
-        Map<String, Object> data = asMap(MiniJson.parse(json));
+    Map<String, Object> data = asMap(MiniJson.parse(json));
 
-        return asList(data.get("results"));
-    }
+    return asList(data.get("results"));
+}
 }

@@ -7,8 +7,11 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class Server {
 
@@ -75,6 +78,7 @@ public class Server {
                                 for (Object p : pollutants) {
 
                                     if (p.toString().equalsIgnoreCase(pollutant)) {
+
                                         filtered.add(station);
                                         break;
                                     }
@@ -158,29 +162,45 @@ public class Server {
 
                 for (Object obj : stationsCache) {
 
-                    Map<String, Object> station = OpenAQClient.asMap(obj);
+                    Map<String, Object> station =
+                            OpenAQClient.asMap(obj);
 
                     List<Object> pollutants =
                             OpenAQClient.asList(station.get("pollutants"));
 
+                    // FIX: Count each pollutant only once per station
+                    Set<String> uniquePollutants = new HashSet<>();
+
                     for (Object pollutant : pollutants) {
 
-                        String name = pollutant.toString().toLowerCase();
+                        if (pollutant != null) {
+                            uniquePollutants.add(
+                                    pollutant.toString().toLowerCase()
+                            );
+                        }
+                    }
+
+                    for (String pollutant : uniquePollutants) {
 
                         pollutantCounts.put(
-                                name,
-                                pollutantCounts.getOrDefault(name, 0) + 1
+                                pollutant,
+                                pollutantCounts.getOrDefault(pollutant, 0) + 1
                         );
                     }
                 }
 
                 for (Map.Entry<String, Integer> entry : pollutantCounts.entrySet()) {
 
-                    stats.put(entry.getKey() + "Stations", entry.getValue());
-
+                    stats.put(
+                            entry.getKey() + "Stations",
+                            entry.getValue()
+                    );
                 }
 
-                stats.put("totalPollutantTypes", pollutantCounts.size());
+                stats.put(
+                        "totalPollutantTypes",
+                        pollutantCounts.size()
+                );
 
                 String responseJson = MiniJson.toJson(stats);
 
