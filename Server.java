@@ -35,6 +35,7 @@ public class Server {
         server.createContext("/stations", new StationsHandler());
         server.createContext("/stats", new StatsHandler());
         server.createContext("/live", new LiveHandler());
+        server.createContext("/analysis", new AnalysisHandler());
 
         server.setExecutor(null);
         server.start();
@@ -55,6 +56,7 @@ public class Server {
         System.out.println("http://localhost:8080/stations?sort=pollutantCount");
         System.out.println("http://localhost:8080/stations?locality=Delhi&sort=pollutantCount&limit=5");
         System.out.println("http://localhost:8080/live?id=236");
+        System.out.println("http://localhost:8080/analysis?id=236");
         System.out.println("http://localhost:8080/stats");
     }
 
@@ -130,34 +132,70 @@ public class Server {
                 sendJson(exchange, 500, "{\"error\":\"" + e.getMessage() + "\"}");
             }
         }
+    }
 
-        /**
-         * Pulls "id" out of the query string and parses it as an int.
-         * Returns null if it's missing or not a valid number, so the
-         * handler can respond with a clear 400 error instead of crashing.
-         */
-        private Integer extractId(String query) {
+    static class AnalysisHandler implements HttpHandler {
 
-            if (query == null) {
-                return null;
-            }
+        @Override
+        public void handle(HttpExchange exchange) throws java.io.IOException {
 
-            String[] params = query.split("&");
+            try {
 
-            for (String param : params) {
+                String query = exchange.getRequestURI().getQuery();
 
-                if (param.startsWith("id=")) {
+                Integer stationId = extractId(query);
 
-                    try {
-                        return Integer.parseInt(param.substring("id=".length()));
-                    } catch (NumberFormatException e) {
-                        return null;
-                    }
+                if (stationId == null) {
+                    sendJson(exchange, 400,
+                            "{\"error\":\"Missing or invalid required parameter: id. Example: /analysis?id=236\"}");
+                    return;
                 }
-            }
 
+                Map<String, Object> result =
+                        PollutionAnalysisService.getAnalysis(stationsCache, stationId);
+
+                if (result == null) {
+                    sendJson(exchange, 404,
+                            "{\"error\":\"No station found with id " + stationId + "\"}");
+                    return;
+                }
+
+                sendJson(exchange, 200, MiniJson.toJson(result));
+
+            } catch (Exception e) {
+
+                sendJson(exchange, 500, "{\"error\":\"" + e.getMessage() + "\"}");
+            }
+        }
+    }
+
+    /**
+     * Pulls "id" out of a query string and parses it as an int. Shared by
+     * LiveHandler and AnalysisHandler, since both endpoints take the same
+     * ?id= parameter. Returns null if it's missing or not a valid number,
+     * so callers can respond with a clear 400 error instead of crashing.
+     */
+    private static Integer extractId(String query) {
+
+        if (query == null) {
             return null;
         }
+
+        String[] params = query.split("&");
+
+        for (String param : params) {
+
+            if (param.startsWith("id=")) {
+
+                try {
+                    return Integer.parseInt(param.substring("id=".length()));
+                } catch (NumberFormatException e) {
+                    return null;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
