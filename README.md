@@ -4,11 +4,11 @@ A backend REST API and live dashboard for monitoring air quality across India, b
 
 This project was built deliberately without frameworks in order to learn backend fundamentals — HTTP handling, routing, JSON serialization, and clean architecture — before reaching for tools that hide those details.
 
-```
-http://localhost:8080/
-```
+**🔗 Live demo:** **[india-aqi-api.onrender.com](https://india-aqi-api.onrender.com)**
 
-![status](https://img.shields.io/badge/status-active--development-9e1b32) ![java](https://img.shields.io/badge/java-17%2B-informational)
+> Hosted on Render's free tier — the instance spins down after 15 minutes of inactivity, so the first request after idle time may take 30–60 seconds to respond while it wakes up. Subsequent requests are fast.
+
+![status](https://img.shields.io/badge/status-live-3fa860) ![java](https://img.shields.io/badge/java-17%2B-informational) ![license](https://img.shields.io/badge/license-MIT-9e1b32)
 
 ---
 
@@ -20,6 +20,7 @@ http://localhost:8080/
 - [Getting Started](#getting-started)
 - [API Reference](#api-reference)
 - [Frontend Dashboard](#frontend-dashboard)
+- [Deployment](#deployment)
 - [Known Issues & Limitations](#known-issues--limitations)
 - [Roadmap](#roadmap)
 
@@ -108,7 +109,10 @@ india-api-aqi/
 │   ├── index.html                    # Dashboard markup
 │   ├── style.css                     # Matte black / cherry red theme
 │   └── app.js                        # Dashboard logic (fetch, render, chart)
+├── Dockerfile                        # Used by Render to build and run the app
+├── .dockerignore                     # Keeps .env, .git, .class files out of the image
 ├── .env                               # OPENAQ_API_KEY (not committed)
+├── LICENSE                            # MIT
 └── README.md
 ```
 
@@ -284,6 +288,35 @@ Served at `/` directly by the Java backend — no separate frontend server, no C
 
 ---
 
+## Deployment
+
+The app is deployed on [Render](https://render.com)'s free tier: **[india-aqi-api.onrender.com](https://india-aqi-api.onrender.com)**
+
+### How it's deployed
+
+- A `Dockerfile` builds the app the same way it's run locally — `javac *.java` followed by `java Server` — using an `eclipse-temurin` JDK base image. No Maven, no Gradle, in production either.
+- The app listens on whichever port Render assigns via the `PORT` environment variable (falls back to `8080` for local development).
+- The OpenAQ API key is supplied as a Render environment variable rather than a `.env` file — `.env` is never committed to the repo (see `.gitignore`) and isn't available at build time. `OpenAQClient.getEnvValue()` checks `System.getenv()` first and only falls back to reading a local `.env` file, so the exact same code works in both environments.
+
+### Deploying your own copy
+
+1. Fork/clone this repo
+2. Create a [Render](https://render.com) account (free, no card required)
+3. **New +** → **Web Service** → connect your repo
+4. Render auto-detects the `Dockerfile` and sets the environment to **Docker**
+5. Under **Environment Variables**, add:
+   ```
+   OPENAQ_API_KEY = your_openaq_key
+   ```
+6. Select the **Free** instance type
+7. Click **Deploy Web Service**
+
+### A known tradeoff
+
+Render's free tier spins down the instance after 15 minutes of inactivity. The first request after idle time takes 30–60 seconds while it cold-starts — this is a deliberate cost/performance tradeoff of the free tier, not a bug in the app itself.
+
+---
+
 ## Known Issues & Limitations
 
 This section documents real problems found and fixed during development, and limitations that are known and intentional rather than accidental.
@@ -321,7 +354,9 @@ This section documents real problems found and fixed during development, and lim
 - [x] Live measurements endpoint
 - [x] Pollution analysis (flagship feature)
 - [x] Frontend dashboard
-- [ ] Deployment — public backend + frontend URL
+- [x] Deployment — live at [india-aqi-api.onrender.com](https://india-aqi-api.onrender.com)
+
+All 12 milestones complete. 🎉
 
 ---
 
@@ -341,6 +376,6 @@ This section documents real problems found and fixed during development, and lim
 
 MIT — see [LICENSE](./LICENSE) for details.
 
-Copyright (c) 2026 Akshit Tanwar
+Copyright (c) 2026 [Your Name]
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files, to deal in the software without restriction, including the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies, subject to including the above copyright notice in all copies. The software is provided "as is", without warranty of any kind.
