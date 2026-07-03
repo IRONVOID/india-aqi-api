@@ -28,8 +28,32 @@ public class OpenAQClient {
      */
     static Map<Integer, Map<Integer, String>> sensorLookup = new LinkedHashMap<>();
 
+    /**
+     * Reads a config value, checking real environment variables first
+     * (used in production — e.g. a key set in Render's dashboard),
+     * then falling back to a local ".env" file (used in local
+     * development). This means the exact same code works both on
+     * your machine and once deployed, with no changes needed.
+     */
     static String getEnvValue(String key) throws IOException {
-        List<String> lines = Files.readAllLines(Paths.get(".env"));
+
+        String fromEnvironment = System.getenv(key);
+
+        if (fromEnvironment != null && !fromEnvironment.isBlank()) {
+            return fromEnvironment;
+        }
+
+        Path envFile = Paths.get(".env");
+
+        if (!Files.exists(envFile)) {
+            throw new IOException(
+                    "Could not find '" + key + "' as an environment variable, "
+                            + "and no .env file exists. In production, set it as an "
+                            + "environment variable on your hosting platform. For local "
+                            + "development, create a .env file with " + key + "=your_value");
+        }
+
+        List<String> lines = Files.readAllLines(envFile);
 
         for (String line : lines) {
             line = line.trim();

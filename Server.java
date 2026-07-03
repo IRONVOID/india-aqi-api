@@ -33,7 +33,22 @@ public class Server {
 
         System.out.println("Loaded " + stationsCache.size() + " stations.\n");
 
-        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
+        // Most hosting platforms (Render included) assign a port
+        // dynamically via the PORT environment variable and expect the
+        // app to listen on it. Locally, PORT usually isn't set, so we
+        // fall back to 8080, keeping local development unchanged.
+        int port = 8080;
+        String portEnv = System.getenv("PORT");
+
+        if (portEnv != null) {
+            try {
+                port = Integer.parseInt(portEnv);
+            } catch (NumberFormatException e) {
+                // Ignore an invalid value and keep the default.
+            }
+        }
+
+        HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
         server.createContext("/stations", new StationsHandler());
         server.createContext("/stats", new StatsHandler());
@@ -50,25 +65,25 @@ public class Server {
         server.setExecutor(null);
         server.start();
 
-        System.out.println("Server running at http://localhost:8080\n");
+        System.out.println("Server running at http://localhost:" + port + "\n");
 
         System.out.println("Available Endpoints:");
-        System.out.println("http://localhost:8080/                (dashboard)");
-        System.out.println("http://localhost:8080/stations");
-        System.out.println("http://localhost:8080/stations?pollutant=pm25");
-        System.out.println("http://localhost:8080/stations?name=airport");
-        System.out.println("http://localhost:8080/stations?locality=Delhi");
-        System.out.println("http://localhost:8080/stations?name=delhi&pollutant=pm25");
-        System.out.println("http://localhost:8080/stations?locality=Delhi&pollutant=pm25");
-        System.out.println("http://localhost:8080/stations?page=1&limit=10");
-        System.out.println("http://localhost:8080/stations?locality=Delhi&page=2&limit=5");
-        System.out.println("http://localhost:8080/stations?sort=name");
-        System.out.println("http://localhost:8080/stations?sort=locality");
-        System.out.println("http://localhost:8080/stations?sort=pollutantCount");
-        System.out.println("http://localhost:8080/stations?locality=Delhi&sort=pollutantCount&limit=5");
-        System.out.println("http://localhost:8080/live?id=236");
-        System.out.println("http://localhost:8080/analysis?id=236");
-        System.out.println("http://localhost:8080/stats");
+        System.out.println("http://localhost:" + port + "/                (dashboard)");
+        System.out.println("http://localhost:" + port + "/stations");
+        System.out.println("http://localhost:" + port + "/stations?pollutant=pm25");
+        System.out.println("http://localhost:" + port + "/stations?name=airport");
+        System.out.println("http://localhost:" + port + "/stations?locality=Delhi");
+        System.out.println("http://localhost:" + port + "/stations?name=delhi&pollutant=pm25");
+        System.out.println("http://localhost:" + port + "/stations?locality=Delhi&pollutant=pm25");
+        System.out.println("http://localhost:" + port + "/stations?page=1&limit=10");
+        System.out.println("http://localhost:" + port + "/stations?locality=Delhi&page=2&limit=5");
+        System.out.println("http://localhost:" + port + "/stations?sort=name");
+        System.out.println("http://localhost:" + port + "/stations?sort=locality");
+        System.out.println("http://localhost:" + port + "/stations?sort=pollutantCount");
+        System.out.println("http://localhost:" + port + "/stations?locality=Delhi&sort=pollutantCount&limit=5");
+        System.out.println("http://localhost:" + port + "/live?id=236");
+        System.out.println("http://localhost:" + port + "/analysis?id=236");
+        System.out.println("http://localhost:" + port + "/stats");
     }
 
     static class StationsHandler implements HttpHandler {
