@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>India AQI — Live Air Quality Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+ 
+  <header class="site-header">
+    <div class="site-header__inner">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true"></span>
+        <div class="brand__text">
+          <span class="brand__title">INDIA AQI</span>
+          <span class="brand__subtitle">Live station monitor</span>
+        </div>
+      </div>
+      <div class="header-stats" id="headerStats" aria-live="polite">
+        <div class="header-stat">
+          <span class="header-stat__value" id="statTotalStations">—</span>
+          <span class="header-stat__label">stations</span>
+        </div>
+        <div class="header-stat">
+          <span class="header-stat__value" id="statTotalPollutants">—</span>
+          <span class="header-stat__label">pollutants tracked</span>
+        </div>
+      </div>
+    </div>
+  </header>
+ 
+  <main class="page">
+ 
+    <section class="panel panel--chart" aria-labelledby="chartHeading">
+      <div class="panel__head">
+        <h2 id="chartHeading" class="panel__title">Sensor coverage</h2>
+        <p class="panel__hint">Number of stations monitoring each pollutant</p>
+      </div>
+      <canvas id="coverageChart" width="900" height="220" role="img" aria-label="Bar chart of station coverage per pollutant"></canvas>
+    </section>
+ 
+    <section class="panel panel--controls" aria-labelledby="controlsHeading">
+      <h2 id="controlsHeading" class="sr-only">Search and filter stations</h2>
+      <div class="controls">
+ 
+        <div class="field field--grow">
+          <label for="searchInput">Search station or locality</label>
+          <input type="text" id="searchInput" placeholder="e.g. Delhi, IGI Airport, Civil Lines" autocomplete="off" />
+        </div>
+ 
+        <div class="field">
+          <label for="pollutantSelect">Pollutant</label>
+          <select id="pollutantSelect">
+            <option value="">All pollutants</option>
+            <option value="pm25">PM2.5</option>
+            <option value="pm10">PM10</option>
+            <option value="no2">NO2</option>
+            <option value="so2">SO2</option>
+            <option value="o3">O3</option>
+            <option value="co">CO</option>
+          </select>
+        </div>
+ 
+        <div class="field">
+          <label for="sortSelect">Sort by</label>
+          <select id="sortSelect">
+            <option value="">Default</option>
+            <option value="name">Name (A–Z)</option>
+            <option value="locality">Locality (A–Z)</option>
+            <option value="pollutantCount">Most monitored first</option>
+          </select>
+        </div>
+ 
+      </div>
+    </section>
+ 
+    <section class="panel panel--results" aria-labelledby="resultsHeading">
+      <div class="panel__head">
+        <h2 id="resultsHeading" class="panel__title">Stations</h2>
+        <p class="panel__hint" id="resultsCount" aria-live="polite"></p>
+      </div>
+ 
+      <div id="stationGrid" class="station-grid" aria-live="polite">
+        <!-- Station cards injected here by app.js -->
+      </div>
+ 
+      <div id="emptyState" class="empty-state" hidden>
+        <p class="empty-state__title">No stations match this search</p>
+        <p class="empty-state__body">Try a broader keyword, or clear the pollutant filter.</p>
+      </div>
+ 
+      <div class="pagination" id="pagination">
+        <button type="button" id="prevPage" class="btn btn--ghost">&larr; Prev</button>
+        <span id="pageIndicator" class="pagination__indicator">Page 1</span>
+        <button type="button" id="nextPage" class="btn btn--ghost">Next &rarr;</button>
+      </div>
+    </section>
+ 
+  </main>
+ 
+  <footer class="site-footer">
+    <p>Data from OpenAQ · Built with Java's built-in HttpServer, no frameworks</p>
+  </footer>
+ 
+  <template id="stationCardTemplate">
+    <article class="card" tabindex="0">
+      <header class="card__head">
+        <h3 class="card__name"></h3>
+        <p class="card__locality"></p>
+      </header>
+      <ul class="card__pollutants"></ul>
+      <button type="button" class="btn btn--check">Check air quality</button>
+      <div class="card__analysis" hidden>
+        <div class="card__analysis-loading" hidden>Reading sensors&hellip;</div>
+        <div class="card__analysis-body"></div>
+      </div>
+    </article>
+  </template>
+ 
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -5,6 +5,9 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 
@@ -37,12 +40,20 @@ public class Server {
         server.createContext("/live", new LiveHandler());
         server.createContext("/analysis", new AnalysisHandler());
 
+        // Registered last, but HttpServer routes by longest matching
+        // path prefix (not registration order), so this only catches
+        // requests that none of the API routes above matched — i.e.
+        // everything under the "public" folder (index.html, style.css,
+        // app.js) and the dashboard's root "/" itself.
+        server.createContext("/", new StaticFileHandler());
+
         server.setExecutor(null);
         server.start();
 
         System.out.println("Server running at http://localhost:8080\n");
 
         System.out.println("Available Endpoints:");
+        System.out.println("http://localhost:8080/                (dashboard)");
         System.out.println("http://localhost:8080/stations");
         System.out.println("http://localhost:8080/stations?pollutant=pm25");
         System.out.println("http://localhost:8080/stations?name=airport");
@@ -196,6 +207,75 @@ public class Server {
         }
 
         return null;
+    }
+
+    /**
+     * Serves the dashboard's static files (index.html, style.css, app.js)
+     * from the "public" folder sitting next to this Server.java / .class
+     * file. This is what lets the frontend and backend live on the same
+     * origin (http://localhost:8080), which avoids CORS entirely --
+     * the browser never sees the dashboard's JS talking to a "different"
+     * server, because as far as it's concerned there's only one.
+     */
+    static class StaticFileHandler implements HttpHandler {
+
+        private static final Path PUBLIC_DIR = Paths.get("public").toAbsolutePath().normalize();
+
+        @Override
+        public void handle(HttpExchange exchange) throws java.io.IOException {
+
+            String requestPath = exchange.getRequestURI().getPath();
+
+            // "/" itself should serve the dashboard's index page.
+            if (requestPath.equals("/")) {
+                requestPath = "/index.html";
+            }
+
+            // Resolve the requested path against the public folder, and
+            // normalize it. This blocks a request like "/../Server.java"
+            // from escaping the public folder and reading arbitrary files
+            // off the server -- a basic but important safety check for
+            // any static file server.
+            Path resolved = PUBLIC_DIR.resolve("." + requestPath).normalize();
+
+            if (!resolved.startsWith(PUBLIC_DIR) || !Files.exists(resolved) || Files.isDirectory(resolved)) {
+                sendPlainText(exchange, 404, "404 Not Found: " + requestPath);
+                return;
+            }
+
+            byte[] fileBytes = Files.readAllBytes(resolved);
+
+            exchange.getResponseHeaders().set("Content-Type", contentTypeFor(resolved));
+            exchange.sendResponseHeaders(200, fileBytes.length);
+
+            OutputStream os = exchange.getResponseBody();
+            os.write(fileBytes);
+            os.close();
+        }
+
+        private String contentTypeFor(Path path) {
+
+            String name = path.toString().toLowerCase();
+
+            if (name.endsWith(".html")) return "text/html; charset=utf-8";
+            if (name.endsWith(".css")) return "text/css; charset=utf-8";
+            if (name.endsWith(".js")) return "application/javascript; charset=utf-8";
+
+            return "application/octet-stream";
+        }
+
+        private void sendPlainText(HttpExchange exchange, int statusCode, String message)
+                throws java.io.IOException {
+
+            byte[] bytes = message.getBytes(StandardCharsets.UTF_8);
+
+            exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
+            exchange.sendResponseHeaders(statusCode, bytes.length);
+
+            OutputStream os = exchange.getResponseBody();
+            os.write(bytes);
+            os.close();
+        }
     }
 
     /**
